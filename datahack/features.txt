@@ -1,0 +1,97 @@
+from itertools import chain
+for type_spend in ["DC", "CC"]:
+
+    spend_features = []
+    for month in range(1,7):
+        spend_features.append([col for col in df_train.columns if "{}_SPEND_MON_0{}_".format(type_spend, month) in col])
+        for df in [df_train, df_test]:
+            df["spend_sum_{}".format(month)] = df[spend_features[-1]].sum(axis=1)
+            for col in spend_features[-1]:
+                df[col + "_perc"] = df[col] / df["spend_sum_{}".format(month)]
+    
+    
+    cats = [col.split("_")[-1] for col in spend_features[0]]
+    for df in [df_train, df_test]:
+        spend_features_by_cat = []
+        for cat in cats:
+            spend_features_by_cat.append([col for col in df.columns if ("{}_SPEND_MON".format(type_spend) in col) & (cat in col) & ('perc' not in col)])
+            df["{}_SPEND_MON_{}".format(type_spend, cat)] = df[spend_features_by_cat[-1]].sum(axis=1)
+        df["{}_SPEND_MON_sum".format(type_spend)] = df[list(chain(*spend_features_by_cat))].sum(axis=1)
+        for cat in cats:
+            df["{}_SPEND_MON_{}_perc".format(type_spend, cat)] = df["{}_SPEND_MON_{}".format(type_spend, cat)] / df["{}_SPEND_MON_sum".format(type_spend)]
+        df["{}_SPEND_max_cat".format(type_spend)] = df[["{}_SPEND_MON_{}".format(type_spend, cat) for cat in cats]].idxmax(axis=1)
+
+===
+
+date_columns = ["CLOSED_DATE", "MATURITY_GL", "MATURITY_LAP", "MATURITY_LAS"]
+
+for df in [df_train, df_test]:
+    df["MATURITY_date"] = df[date_columns[1:]].min(axis=1)
+
+===
+
+for df in [df_train, df_test]:
+    df["NEFT_CATEGORY_same"] = (df["NEFT_CC_CATEGORY"] == df["NEFT_DC_CATEGORY"]).astype(int)
+    df["NEFT_TXN_dif"] = df["NEFT_CC_TXN"] / df["NEFT_DC_TXN"]
+    df["NEFT_AMOUNT_dif"] = df["NEFT_CC_AMOUNT"] / df["NEFT_DC_AMOUNT"]
+    df["NEFT_TXN_sum"] = df["NEFT_CC_TXN"] + df["NEFT_DC_TXN"]
+    df["NEFT_AMOUNT_sum"] = df["NEFT_CC_AMOUNT"] + df["NEFT_DC_AMOUNT"]
+    df["NEFT_amount_per_transaction"] = df["NEFT_AMOUNT_sum"] / df["NEFT_TXN_sum"]
+    
+    df["TPT_CATEGORY_same"] = (df["TPT_CC_CATEGORY_MON_01"] == df["TPT_DC_CATEGORY_MON_01"]).astype(int)
+    df["TPT_TXN_dif"] = df["TPT_CC_TXN_MON_01"] / df["TPT_DC_TXN_MON_01"]
+    df["TPT_AMOUNT_dif"] = df["TPT_CC_AMOUNT_MON_01"] / df["TPT_DC_AMOUNT_MON_01"]
+    df["TPT_TXN_sum"] = df["TPT_CC_TXN_MON_01"] + df["TPT_DC_TXN_MON_01"]
+    df["TPT_AMOUNT_sum"] = df["TPT_CC_AMOUNT_MON_01"] + df["TPT_DC_AMOUNT_MON_01"]
+    df["NEFT_amount_per_transaction"] = df["TPT_AMOUNT_sum"] / df["TPT_TXN_sum"]
+    
+    df["NEFT_TPT_CATEGORY_same_CC"] = (df["NEFT_CC_CATEGORY"] == df["TPT_CC_CATEGORY_MON_01"]).astype(int)
+    df["NEFT_TPT_CATEGORY_same_DC"] = (df["NEFT_DC_CATEGORY"] == df["TPT_DC_CATEGORY_MON_01"]).astype(int)
+    
+    df["NEFT_TPT_TXN_sum_CC"] = df["NEFT_CC_TXN"] + df["TPT_CC_TXN_MON_01"]
+    df["NEFT_TPT_TXN_sum_DC"] = df["NEFT_DC_TXN"] + df["TPT_DC_TXN_MON_01"]
+    
+    df["NEFT_TPT_AMOUNT_sum_CC"] = df["NEFT_CC_AMOUNT"] + df["TPT_CC_AMOUNT_MON_01"]
+    df["NEFT_TPT_AMOUNT_sum_DC"] = df["NEFT_DC_AMOUNT"] + df["TPT_DC_AMOUNT_MON_01"]
+    
+    df["NEFT_TPT_AMOUNT_sum"] = df["NEFT_TPT_AMOUNT_sum_CC"] + df["NEFT_TPT_AMOUNT_sum_DC"]
+    df["NEFT_TPT_TXN_sum"] = df["NEFT_TPT_TXN_sum_CC"] + df["NEFT_TPT_TXN_sum_DC"]
+    df["NEFT_TPT_amount_per_transaction"] = df["NEFT_TPT_AMOUNT_sum"] / df["NEFT_TPT_TXN_sum"]
+
+
+===
+
+closed_cols = [col.split("_")[0] for col in df_train.columns if (len(col.split("_")) == 2) & (col.split("_")[-1] == "CLOSED")]
+tag_cols = [col.split("_")[0] for col in df_train.columns if (len(col.split("_")) == 2) & (col.split("_")[-1] == "TAG")]
+closed_tag_cols = list(set(closed_cols).intersection(set(tag_cols)))
+
+for df in [df_train, df_test]:
+    for col in closed_tag_cols:
+        df[col + "_same"] = (df[col+"_TAG"] == df[col+"_CLOSED"]).astype(int)
+
+scrub_closed_cols = [col.split("_")[0] for col in df_train.columns if (len(col.split("_")) == 3) & (col.split("_")[-1] == "CLOSED")]
+scrub_live_cols = [col.split("_")[0] for col in df_train.columns if (len(col.split("_")) == 3) & (col.split("_")[-1] == "LIVE")]
+scrub_closed_tag_cols = list(set(scrub_closed_cols).intersection(set(scrub_live_cols)))
+
+for df in [df_train, df_test]:
+    for col in scrub_closed_tag_cols:
+        df[col + "_SCRUB_same"] = (df[col+"_SCRUB_LIVE"] == df[col+"_SCRUB_CLOSED"]).astype(int)
+
+scrub_closed_cols = list(set(closed_cols).intersection(set(scrub_closed_cols)))
+for df in [df_train, df_test]:
+    for col in scrub_tag_closed_cols:
+        df[col + "_SCRUB_closed_same"] = (df[col+"_CLOSED"] == df[col+"_SCRUB_CLOSED"]).astype(int)
+        
+scrub_live_cols = list(set(tag_cols).intersection(set(scrub_live_cols)))
+for df in [df_train, df_test]:
+    for col in scrub_tag_closed_cols:
+        df[col + "_SCRUB_live_same"] = (df[col+"_TAG"] == df[col+"_SCRUB_LIVE"]).astype(int)
+
+===
+
+for df in [df_train, df_test]:
+    df["CARD_sum"] = (df[[col for col in df.columns if col.split("_")[0] == "CARD"]] == 'Y').sum(axis=1)
+
+===
+
+
